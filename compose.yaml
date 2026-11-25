@@ -1,0 +1,38 @@
+services:
+  neo4j:
+    image: neo4j:5.26.27-community
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:?Set NEO4J_PASSWORD}
+      NEO4J_server_memory_heap_initial__size: 512m
+      NEO4J_server_memory_heap_max__size: 1G
+      NEO4J_server_memory_pagecache_size: 512m
+    volumes:
+      - neo4j-data:/data
+    # Intentionally no published ports: only memory can reach Bolt/HTTP.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:7474 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+    networks: [memory]
+  api:
+    build: .
+    restart: unless-stopped
+    env_file: /etc/vitruvius-memory/runtime.env
+    ports: ["10.116.0.5:8001:8001"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,urllib.request; r=urllib.request.Request('http://127.0.0.1:8001/healthz',headers={'Authorization':'Bearer '+os.environ['MEMORY_TOKEN']}); urllib.request.urlopen(r, timeout=5)"]
+      interval: 15s
+      timeout: 6s
+      retries: 4
+      start_period: 45s
+    depends_on:
+      neo4j: {condition: service_healthy}
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [memory]
+networks:
+  memory:
+volumes:
+  neo4j-data:
